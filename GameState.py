@@ -1,5 +1,7 @@
 from collections import defaultdict
 
+import locset as ls
+
 class GameState:
 	def __init__(self):
 		self.loc_to_color = defaultdict(list)
@@ -56,6 +58,8 @@ class GameState:
 
 		Swaps loc1 and loc2
 		'''
+		assert ls.is_adjacent(loc1, loc2)
+
 		if not self.loc_to_color[loc1] or not self.loc_to_color[loc2]:
 			raise ValueError('Loc is empty!')
 
