@@ -7,16 +7,15 @@ class GameState:
     An instance represents a state of a dissembler game, i.e. stores the
     locations of the squares and their corresponding colors.
     '''
-    def __init__(self, loc_to_color=defaultdict(list), 
-        color_to_loc=defaultdict(set)):
+    def __init__(self):
         '''
-        Arguments:
+        Fields:
             loc_to_color: a dict mapping locations ((x, y) tuples) to a list
             of colors (strings)
             color_to_loc: a dict mapping a color to a set of locations
         '''
-        self.loc_to_color = loc_to_color
-        self.color_to_loc = color_to_loc
+        self.loc_to_color = defaultdict(list)
+        self.color_to_loc = defaultdict(set)
 
     def add(self, loc, color):
         '''
@@ -171,3 +170,10 @@ class GameState:
 
         return True
 
+    def __getitem__(self, key):
+        if self.loc_to_color[key]:
+            return self.loc_to_color[key]
+        elif self.color_to_loc[key]:
+            return self.color_to_loc[key]
+        else:
+            raise KeyError(f'{key} not found')
