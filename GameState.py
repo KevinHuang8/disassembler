@@ -1,4 +1,3 @@
-from copy import copy
 from collections import defaultdict
 
 import locset as ls
@@ -8,16 +7,14 @@ class GameState:
     An instance represents a state of a dissembler game, i.e. stores the
     locations of the squares and their corresponding colors.
     '''
-    def __init__(self, nrows, ncols, loc_to_color=defaultdict(list), 
+    def __init__(self, loc_to_color=defaultdict(list), 
         color_to_loc=defaultdict(set)):
         '''
         Arguments:
-            nrows, ncols: number of rows, cols in board
             loc_to_color: a dict mapping locations ((x, y) tuples) to a list
             of colors (strings)
             color_to_loc: a dict mapping a color to a set of locations
         '''
-        self.nrows, self.ncols = nrows, ncols
         self.loc_to_color = loc_to_color
         self.color_to_loc = color_to_loc
 
@@ -31,6 +28,9 @@ class GameState:
         multiple colors associated with it, so a 'loc' is really associated
         with a stack of color, with the topmost element being the current color.
         '''
+        assert _is_loc(loc)
+        assert type(color) is str
+
         color_stack = self.loc_to_color[loc]
 
         try:
@@ -42,6 +42,23 @@ class GameState:
 
         color_stack.append(color)
         self.color_to_loc[color].add(loc)
+
+    def _is_loc(self, loc):
+        '''
+        Arguments:
+          loc -- a location
+
+        Return value: True if `loc` is a valid (row, column) location,
+          otherwise False.
+        '''
+        if type(loc) is not tuple:
+            return False
+        if len(loc) != 2:
+            return False
+        if type(loc[0]) is int and type(loc[1]) is int:
+            if loc[0] >= 0 and loc[1] >= 0:
+                return True
+        return False
 
     def strip(self, loc):
         '''
@@ -68,7 +85,7 @@ class GameState:
     def swap(self, loc1, loc2):
         '''
         Arguments:
-            loc1, loc2: two (x, y) tuples describing locations
+            loc1, loc2: two (x, y) tuples describing locations. Must be adjacent
 
         Swaps loc1 and loc2.
         '''
@@ -129,9 +146,28 @@ class GameState:
 
         self.swap(loc1, loc2)
 
-        valid = new_game_state.any_to_remove()
+        valid = self.any_to_remove()
 
         self.swap(loc1, loc2)
 
         return valid
+
+    def make_move(self, loc1, loc2):
+        '''
+        Arguments:
+            loc1, loc2: two locations
+
+        Executes swapping loc1 and loc2 and resolves events that occur after.
+        Returns whether the move was successful.
+        '''
+        assert _is_loc(loc1)
+        assert _is_loc(loc2)
+
+        if not is_move_valid(loc1, loc2):
+            return False
+
+        self.swap(loc1, loc2)
+        self.remove_connected_groups()
+
+        return True
 

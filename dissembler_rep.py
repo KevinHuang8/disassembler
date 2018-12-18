@@ -7,7 +7,7 @@ The Dissembler puzzle game.
 '''
 
 from utils import *
-from copy import copy
+from copy import copy, deepcopy
 import locset as ls
 
 # ---------------------------------------------------------------------- 
