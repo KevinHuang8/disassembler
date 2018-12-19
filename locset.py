@@ -11,6 +11,30 @@ from copy import copy
 from functools import reduce
 from utils import *
 
+def orientation(loc1, loc2):
+    '''
+    Arguments:
+        loc1, loc2: (row, column) locations
+
+    Returns a string the direction of loc2 relative to loc1.
+    loc2 and loc1 must be adjacent.
+    E.g., direction((0, 0), (1, 0)) returns 'E'
+    '''
+    assert is_loc(loc1)
+    assert is_loc(loc2)
+    assert is_adjacent(loc1, loc2)
+    assert loc1 != loc2
+
+    if loc2[0] > loc1[0]:
+        return 'E'
+    elif loc2[0] < loc1[0]:
+        return 'W'
+
+    if loc2[1] > loc1[1]:
+        return 'N'
+    
+    return 'S'
+
 def is_adjacent(loc1, loc2):
     '''
     Arguments:

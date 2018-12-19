@@ -1,6 +1,7 @@
 import tkinter as tk
 
 import GameState as gs
+import locset as ls
 
 # The proportion of the non-menu part of the application GUI that the game
 # takes up
@@ -19,6 +20,9 @@ INNER_SPACING = 10
 
 # Max colors to show in a sqare
 MAX_COLORS = 4
+
+# How fast swapping takes place
+SWAP_SPEED = 5
 
 class Application:
     '''
@@ -39,6 +43,11 @@ class Application:
 
         self.create_widgets()
 
+        # Whether a game square has been clicked
+        self.square_clicked = None
+        # Whether a game animation is currently going on
+        self.animating = False
+
         # A GameState object
         self.game_state = gs.GameState()
 
@@ -49,8 +58,9 @@ class Application:
         self.game_state.add((2, 3), 'blue')
         self.game_state.add((1, 1), 'blue')
         self.game_state.add((1, 1), 'green')
+        self.game_state.add((2, 0), 'red')
 
-        self.draw_game_state(self.game_canvas)
+        self.draw_game_state()
 
     def mainloop(self):
         self.master.mainloop()
@@ -88,27 +98,26 @@ class Application:
 
         self.display.pack(fill='both')
 
-    def draw_game_state(self, canvas):
-        '''
-        Arguments:
-            canvas: a tkinter canvas
+        self.game_canvas.bind('<Button-1>', self.on_game_click)
 
-        Draws the current game state to the canvas.
+    def draw_game_state(self):
+        '''
+        Draws the current game state to the game canvas.
         '''
 
-        space_size, x, y = self.get_drawing_dimensions(canvas)
+        space_size, x, y = self.get_drawing_dimensions()
 
         for loc in self.game_state:
             tag = f'{loc[0]}+{loc[1]}'
 
-            if not loc:
-                self.canvas.delete(tag)
+            try:
+                color_queue = self.game_state[loc]
+            except KeyError:
+                self.game_canvas.delete(tag)
                 continue
-
-            color_stack = self.game_state[loc]
-
+            
             colored_squares = []
-            for i, color in enumerate(color_stack):
+            for i, color in enumerate(color_queue):
                 if i > 4:
                     # Colors beyond the 4th appear as black
                     color = 'black'
@@ -117,21 +126,21 @@ class Application:
                     modified_tag = (tag, 'outside')
                 else:
                     modified_tag = tag
-                self.draw_square_in_grid(canvas, space_size, 
-                    x + loc[0] * space_size, y + loc[1] * space_size, 
+                self.draw_square_in_grid(self.game_canvas, space_size, 
+                    *self.loc_to_coord(loc), 
                     color, modified_tag,
                     SPACING + i*INNER_SPACING)
 
             self.game_canvas.tag_bind(tag, '<Enter>', 
-                lambda event, tag=tag: self.on_game_hover(event, tag))
+                lambda event, tag=tag: self.on_square_hover(event, tag))
             self.game_canvas.tag_bind(tag, '<Leave>', 
-                lambda event, tag=tag: self.on_game_hover(event, tag))
+                lambda event, tag=tag: self.on_square_hover(event, tag))
 
-    def get_drawing_dimensions(self, canvas):
+            self.game_canvas.tag_bind(tag, '<Button-1>', 
+                lambda event, tag=tag: self.on_square_click(event, tag))
+
+    def get_drawing_dimensions(self):
         '''
-        Arguments:
-            canvas: a tkinter canvas
-
         Computes the square grid where the squares in the dissembler
         game should be drawn relative to the canvas.
 
@@ -145,8 +154,8 @@ class Application:
 
         n = max(nrows, ncols)
 
-        width = int(canvas['width'])
-        height = int(canvas['height'])
+        width = int(self.game_canvas['width'])
+        height = int(self.game_canvas['height'])
 
         offset = abs(width - height) / 2
 
@@ -183,7 +192,7 @@ class Application:
             x + space_size - spacing, y + space_size - spacing, fill=color,
             outline=color, width=4, tags=tag)
 
-    def on_game_hover(self, event, tag):
+    def on_square_hover(self, event, tag):
         '''
         Arguments:
             event: a tkinter event
@@ -192,6 +201,12 @@ class Application:
         A callback function to highlight the square being hovered over by the
         mouse. Only highlights outermost square.
         '''
+        if self.square_clicked and self.square_clicked[0] == tag:
+            return
+
+        if self.animating:
+            return
+
         tag_squres = event.widget.find_withtag(tag)
         outside_squares = event.widget.find_withtag('outside')
 
@@ -202,11 +217,162 @@ class Application:
         elif event.type == '8': # Leave
             event.widget.itemconfig(item, outline='', width=4)
 
+    def on_square_click(self, event, tag):
+        '''
+        A callback function called when a square with 'tag' gets clicked on 
+        by the mouse.
+        '''
+        if self.animating:
+            return
+
+        tag_squres = event.widget.find_withtag(tag)
+        outside_squares = event.widget.find_withtag('outside')
+
+        item = set(tag_squres).intersection(outside_squares).pop()
+
+        event.widget.itemconfig(item, outline='black', width=4)
+
+        if not self.square_clicked:
+            self.square_clicked = tag, item
+            return
+
+        loc1 = self.coord_to_loc(self.game_canvas.coords(
+            self.square_clicked[1])[:2])
+        loc2 = self.coord_to_loc((event.x, event.y))
+
+        try:
+            self.game_state.make_move(loc1, loc2)
+        except ValueError:
+            # Send a message that the move is invalid!
+            if not ls.is_adjacent(loc1, loc2):
+                print('Not adjacent!')
+            else:
+                print("Doesn't remove anything!")
+        else:
+            direction = ls.orientation(loc1, loc2)
+            self.animate_swap(self.square_clicked[0], tag, loc2, direction)
+
+    def animate_swap(self, tag1, tag2, loc2, direction):
+        '''
+        Arguments:
+            tag1, tag2: canvas tags corresponding to the two squares to swap
+            loc2: the (row, col) location of the square corresponding to tag2
+            direction: a string, either 'N','E','S', or 'W', depending on 
+            the relative orientation of tag2 to tag2
+
+        Animates the swapping of squares tag1 and tag2.
+        '''
+        self.animating = True
+
+        if direction == 'E':
+            self.game_canvas.move(tag1, SWAP_SPEED, 0)
+            self.game_canvas.move(tag2, -SWAP_SPEED, 0)
+        elif direction == 'W':
+            self.game_canvas.move(tag2, SWAP_SPEED, 0)
+            self.game_canvas.move(tag1, -SWAP_SPEED, 0)
+        elif direction == 'N':
+            self.game_canvas.move(tag1, 0, SWAP_SPEED)
+            self.game_canvas.move(tag2, 0, -SWAP_SPEED)
+        elif direction == 'S':
+            self.game_canvas.move(tag2, 0, SWAP_SPEED)
+            self.game_canvas.move(tag1, 0, -SWAP_SPEED)
+        
+        space_coord = self.loc_to_coord(loc2)
+        square_coord = (space_coord[0] + SPACING, space_coord[1] + SPACING)
+
+        item = self.game_canvas.find_withtag(tag1)
+        if type(item) is tuple:
+            item = item[0]
+
+        distx, disty = self.distance(square_coord,
+            self.game_canvas.coords(item)[:2])
+
+        if abs(distx) < SWAP_SPEED and abs(disty) < SWAP_SPEED:
+            self.animating = False
+            self.game_canvas.move(tag1, distx, disty)
+            self.game_canvas.move(tag2, -distx, -disty)
+            
+            self.after_swap(tag1, tag2)
+            
+            return
+
+        self.game_canvas.after(15, lambda tag1=tag1, tag2=tag2, loc2=loc2,
+            direction=direction: self.animate_swap(tag1, tag2, loc2, direction))
+
+    def after_swap(self, tag1, tag2):
+        '''
+        Arguments:
+            tag1, tag2: two canvas tags corresponding to squares that were
+            just succesfully swapped.
+
+        Called after the swaping animation is done. Resolves any actions
+        that are needed after a swap.
+        '''
+        # Unclick
+        self.game_canvas.itemconfig(tag1, outline='')
+        self.game_canvas.itemconfig(tag2, outline='')
+        self.square_clicked = None
+
+        #animate removal
+
+        self.draw_game_state()
+
+        print(self.game_state)
+
+    def distance(self, coord1, coord2):
+        '''
+        Arguments:
+            coord1, coord2: (x, y) pixel coordinates
+
+        Returns (x, y) distance between coord1 and coord2.
+        '''
+
+        return (coord1[0] - coord2[0]), (coord1[1] - coord2[1])
+
+    def loc_to_coord(self, loc):
+        '''
+        Arguments:
+            loc - a (row, column) location
+
+        Returns the pixel coordinates of the square space corresponding to loc
+        relative to the game canvas.
+        '''
+
+        space_size, x, y = self.get_drawing_dimensions()
+
+        return x + space_size * loc[0], y + space_size * loc[1]
+
+    def coord_to_loc(self, coord):
+        '''
+        Arguments:
+            coord: a (x, y) pixel coordinate relative to the game canvas
+
+        Returns the corresponding (row, col) location that
+        contains the coord.
+        '''
+        space_size, x, y = self.get_drawing_dimensions()
+
+        row = (coord[0] - x) // space_size
+        col = (coord[1] - y) // space_size
+
+        return int(row), int(col)
+
     def key_handler(self):
         pass
 
-    def on_mouse_click(self):
-        pass
+    def on_game_click(self, event):
+        '''
+        A callback function called when the mouse is clicked inside the game
+        canvas.
+        '''
+        if not self.square_clicked or self.animating:
+            return
+
+        if not event.widget.find_overlapping(event.x, event.y, 
+            event.x, event.y):
+            item = self.square_clicked[1]
+            event.widget.itemconfig(item, outline='')
+            self.square_clicked = None
 
 
 root = tk.Tk()

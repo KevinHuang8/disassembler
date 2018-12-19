@@ -199,6 +199,9 @@ class GameState:
     def __bool__(self):
         return bool(self.loc_to_color)
 
+    def __str__(self):
+        return str(self.loc_to_color)
+
 class A:
     def __init__(self):
         self.game_state = GameState()
