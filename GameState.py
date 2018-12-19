@@ -115,13 +115,19 @@ class GameState:
         '''
         Strips one color from all connected color groups covering at least 
         three squares from a board representation.
+
+        Returns a set of affected locations.
         '''
+        removed = set()
 
         for color, locset in self.color_to_loc.items():
             smaller, larger = ls.filter_locset(locset)
 
             for loc in larger:
-                self.strip(loc)             
+                self.strip(loc)
+                removed.add(loc)
+
+        return removed             
 
     def is_move_valid(self, loc1, loc2):
         '''
@@ -163,6 +169,7 @@ class GameState:
             loc1, loc2: two locations
 
         Executes swapping loc1 and loc2 and resolves events that occur after.
+        Returns a locset of locations that have been stripped.
         '''
         assert is_loc(loc1)
         assert is_loc(loc2)
@@ -171,7 +178,7 @@ class GameState:
             raise ValueError('Invalid move!')
 
         self.swap(loc1, loc2)
-        self.remove_connected_groups()
+        return self.remove_connected_groups()
 
     def nrows(self):
         '''

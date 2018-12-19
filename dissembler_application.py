@@ -1,3 +1,4 @@
+import math, cmath
 import tkinter as tk
 
 import GameState as gs
@@ -23,6 +24,10 @@ MAX_COLORS = 4
 
 # How fast swapping takes place
 SWAP_SPEED = 5
+
+ROTATION_SPEED = math.pi / 12
+SHRINK_FACTOR = 0.97
+REMOVE_TIME = 75
 
 class Application:
     '''
@@ -51,14 +56,21 @@ class Application:
         # A GameState object
         self.game_state = gs.GameState()
 
-        self.game_state.add((0, 0), 'red')
-        self.game_state.add((1, 1), 'red')
-        self.game_state.add((1, 0), 'blue')
-        self.game_state.add((4, 4), 'green')
-        self.game_state.add((2, 3), 'blue')
-        self.game_state.add((1, 1), 'blue')
-        self.game_state.add((1, 1), 'green')
-        self.game_state.add((2, 0), 'red')
+        self.game_state.add((0, 2), 'red')
+        self.game_state.add((1, 2), 'red')
+        self.game_state.add((2, 2), 'blue')
+        self.game_state.add((3, 2), 'red')
+        self.game_state.add((4, 2), 'yellow')
+        self.game_state.add((5, 2), 'yellow')
+        self.game_state.add((6, 2), 'green')
+        self.game_state.add((7, 2), 'yellow')
+        self.game_state.add((8, 2), 'green')
+        self.game_state.add((9, 2), 'green')
+        self.game_state.add((3, 1), 'green')
+        self.game_state.add((3, 0), 'green')
+        self.game_state.add((3, 3), 'blue')
+        self.game_state.add((3, 4), 'blue')
+        self.game_state.add((2, 2), 'green')
 
         self.draw_game_state()
 
@@ -158,7 +170,7 @@ class Application:
         width = int(self.game_canvas['width'])
         height = int(self.game_canvas['height'])
 
-        offset = abs(width - height) / 2
+        offset = int(abs(width - height) / 2)
 
         if width > height:
             x = offset
@@ -169,7 +181,7 @@ class Application:
 
         total_length = min(width, height)
 
-        space_size = total_length / n
+        space_size = total_length // n
 
         return space_size, x, y
 
@@ -189,9 +201,12 @@ class Application:
         Draws a square on canvas in a grid space allocated to it, defined by
         'square_size', 'x', and 'y'
         '''
-        canvas.create_rectangle(x + spacing, y + spacing, 
-            x + space_size - spacing, y + space_size - spacing, fill=color,
-            outline=color, width=4, tags=tag)
+        canvas.create_polygon(
+            [(x + spacing, y + spacing),
+            (x + spacing, y + space_size - spacing),
+            (x + space_size - spacing, y + space_size - spacing), 
+            (x + space_size - spacing, y + spacing)], 
+            fill=color, outline='', width=4, tags=tag)
 
     def on_square_hover(self, event, tag):
         '''
@@ -242,7 +257,7 @@ class Application:
         loc2 = self.coord_to_loc((event.x, event.y))
 
         try:
-            self.game_state.make_move(loc1, loc2)
+            removed = self.game_state.make_move(loc1, loc2)
         except ValueError:
             # Send a message that the move is invalid!
             if not ls.is_adjacent(loc1, loc2):
@@ -251,15 +266,17 @@ class Application:
                 print("Doesn't remove anything!")
         else:
             direction = ls.orientation(loc1, loc2)
-            self.animate_swap(self.square_clicked[0], tag, loc2, direction)
+            self.animate_swap(self.square_clicked[0], tag, loc2, direction,
+                removed)
 
-    def animate_swap(self, tag1, tag2, loc2, direction):
+    def animate_swap(self, tag1, tag2, loc2, direction, removed):
         '''
         Arguments:
             tag1, tag2: canvas tags corresponding to the two squares to swap
             loc2: the (row, col) location of the square corresponding to tag2
             direction: a string, either 'N','E','S', or 'W', depending on 
             the relative orientation of tag2 to tag2
+            removed: a set of locations that had their colors stripped
 
         Animates the swapping of squares tag1 and tag2.
         '''
@@ -293,18 +310,20 @@ class Application:
             self.game_canvas.move(tag1, distx, disty)
             self.game_canvas.move(tag2, -distx, -disty)
             
-            self.after_swap(tag1, tag2)
+            self.after_swap(tag1, tag2, removed)
             
             return
 
         self.game_canvas.after(15, lambda tag1=tag1, tag2=tag2, loc2=loc2,
-            direction=direction: self.animate_swap(tag1, tag2, loc2, direction))
+            direction=direction, removed=removed: self.animate_swap(tag1, tag2, 
+                loc2, direction, removed))
 
-    def after_swap(self, tag1, tag2):
+    def after_swap(self, tag1, tag2, removed):
         '''
         Arguments:
             tag1, tag2: two canvas tags corresponding to squares that were
             just succesfully swapped.
+            removed: a set of locations that had their colors stripped
 
         Called after the swaping animation is done. Resolves any actions
         that are needed after a swap.
@@ -314,11 +333,52 @@ class Application:
         self.game_canvas.itemconfig(tag2, outline='')
         self.square_clicked = None
 
-        #animate removal
+        self.animate_removal(removed, 0)
 
-        self.draw_game_state()
+    def animate_removal(self, removed, i):
+        '''
+        Arguments:
+            removed: a set of locations that had their colors stripped
+            i: number of iterations
+        '''
+        space_size, _x, _y = self.get_drawing_dimensions()
 
-        print(self.game_state)
+        for loc in removed:
+            xspace, yspace = self.loc_to_coord(loc)
+
+            items = self.game_canvas.find_overlapping(xspace, yspace, 
+                xspace + space_size, yspace + space_size)
+
+            for item in items:
+                if len(self.game_canvas.gettags(item)) == 1:
+                    continue
+
+                coords = self.game_canvas.coords(item)
+                new_coords = []
+
+                # coordinate of center of rectangle
+                offset = ((coords[0] + coords[4]) / 2) + \
+                ((coords[1] + coords[3]) / 2)*1j
+
+                # Multiply coordinates by a complex number to rotate
+                it = iter(coords)
+                for coord in it:
+                    x, y = coord, next(it)
+                    complex_coord = x + y*1j
+                    transformed = (complex_coord - offset)*cmath.exp(
+                        1j*ROTATION_SPEED)*SHRINK_FACTOR + offset
+
+                    new_coords.append((transformed.real)) 
+                    new_coords.append((transformed.imag))
+
+                self.game_canvas.coords(item, *new_coords)
+
+        if i > REMOVE_TIME:
+            self.draw_game_state()
+            return
+
+        self.game_canvas.after(15, lambda i=i: self.animate_removal(removed, 
+            i + 1))
 
     def distance(self, coord1, coord2):
         '''
