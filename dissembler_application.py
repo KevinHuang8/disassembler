@@ -3,31 +3,8 @@ import tkinter as tk
 
 import GameState as gs
 import locset as ls
-
-# The proportion of the non-menu part of the application GUI that the game
-# takes up
-GAME_WINDOW_PROPORTION = 0.8
-
-# The proportion that the menu takes up from the application GUI
-MENU_PROPORTION = 0.1
-
-FONT = ('Courier', 12)
-
-# The spacing between squares in the GUI
-SPACING = 5
-
-# Spacing between colors when a square has multiple colors
-INNER_SPACING = 10
-
-# Max colors to show in a sqare
-MAX_COLORS = 4
-
-# How fast swapping takes place
-SWAP_SPEED = 5
-
-ROTATION_SPEED = math.pi / 12
-SHRINK_FACTOR = 0.97
-REMOVE_TIME = 75
+from animator import Animator
+from constants import *
 
 class Application:
     '''
@@ -47,6 +24,7 @@ class Application:
         self.master.geometry(f'{self.width}x{self.height}')
 
         self.create_widgets()
+        self.animator = Animator(self)
 
         # Whether a game square has been clicked
         self.square_clicked = None
@@ -220,7 +198,7 @@ class Application:
         if self.square_clicked and self.square_clicked[0] == tag:
             return
 
-        if self.animating:
+        if self.animator.animating:
             return
 
         tag_squres = event.widget.find_withtag(tag)
@@ -238,7 +216,7 @@ class Application:
         A callback function called when a square with 'tag' gets clicked on 
         by the mouse.
         '''
-        if self.animating:
+        if self.animator.animating:
             return
 
         tag_squres = event.widget.find_withtag(tag)
@@ -266,129 +244,25 @@ class Application:
                 print("Doesn't remove anything!")
         else:
             direction = ls.orientation(loc1, loc2)
-            self.animate_swap(self.square_clicked[0], tag, loc2, direction,
-                removed)
+            self.animator.animate_swap(self.square_clicked[0], tag, loc2, 
+                direction, removed)
 
-    def animate_swap(self, tag1, tag2, loc2, direction, removed):
+    def key_handler(self):
+        pass
+
+    def on_game_click(self, event):
         '''
-        Arguments:
-            tag1, tag2: canvas tags corresponding to the two squares to swap
-            loc2: the (row, col) location of the square corresponding to tag2
-            direction: a string, either 'N','E','S', or 'W', depending on 
-            the relative orientation of tag2 to tag2
-            removed: a set of locations that had their colors stripped
-
-        Animates the swapping of squares tag1 and tag2.
+        A callback function called when the mouse is clicked inside the game
+        canvas.
         '''
-        self.animating = True
-
-        if direction == 'E':
-            self.game_canvas.move(tag1, SWAP_SPEED, 0)
-            self.game_canvas.move(tag2, -SWAP_SPEED, 0)
-        elif direction == 'W':
-            self.game_canvas.move(tag2, SWAP_SPEED, 0)
-            self.game_canvas.move(tag1, -SWAP_SPEED, 0)
-        elif direction == 'N':
-            self.game_canvas.move(tag1, 0, SWAP_SPEED)
-            self.game_canvas.move(tag2, 0, -SWAP_SPEED)
-        elif direction == 'S':
-            self.game_canvas.move(tag2, 0, SWAP_SPEED)
-            self.game_canvas.move(tag1, 0, -SWAP_SPEED)
-        
-        space_coord = self.loc_to_coord(loc2)
-        square_coord = (space_coord[0] + SPACING, space_coord[1] + SPACING)
-
-        item = self.game_canvas.find_withtag(tag1)
-        if type(item) is tuple:
-            item = item[0]
-
-        distx, disty = self.distance(square_coord,
-            self.game_canvas.coords(item)[:2])
-
-        if abs(distx) < SWAP_SPEED and abs(disty) < SWAP_SPEED:
-            self.animating = False
-            self.game_canvas.move(tag1, distx, disty)
-            self.game_canvas.move(tag2, -distx, -disty)
-            
-            self.after_swap(tag1, tag2, removed)
-            
+        if not self.square_clicked or self.animator.animating:
             return
 
-        self.game_canvas.after(15, lambda tag1=tag1, tag2=tag2, loc2=loc2,
-            direction=direction, removed=removed: self.animate_swap(tag1, tag2, 
-                loc2, direction, removed))
-
-    def after_swap(self, tag1, tag2, removed):
-        '''
-        Arguments:
-            tag1, tag2: two canvas tags corresponding to squares that were
-            just succesfully swapped.
-            removed: a set of locations that had their colors stripped
-
-        Called after the swaping animation is done. Resolves any actions
-        that are needed after a swap.
-        '''
-        # Unclick
-        self.game_canvas.itemconfig(tag1, outline='')
-        self.game_canvas.itemconfig(tag2, outline='')
-        self.square_clicked = None
-
-        self.animate_removal(removed, 0)
-
-    def animate_removal(self, removed, i):
-        '''
-        Arguments:
-            removed: a set of locations that had their colors stripped
-            i: number of iterations
-        '''
-        space_size, _x, _y = self.get_drawing_dimensions()
-
-        for loc in removed:
-            xspace, yspace = self.loc_to_coord(loc)
-
-            items = self.game_canvas.find_overlapping(xspace, yspace, 
-                xspace + space_size, yspace + space_size)
-
-            for item in items:
-                if len(self.game_canvas.gettags(item)) == 1:
-                    continue
-
-                coords = self.game_canvas.coords(item)
-                new_coords = []
-
-                # coordinate of center of rectangle
-                offset = ((coords[0] + coords[4]) / 2) + \
-                ((coords[1] + coords[3]) / 2)*1j
-
-                # Multiply coordinates by a complex number to rotate
-                it = iter(coords)
-                for coord in it:
-                    x, y = coord, next(it)
-                    complex_coord = x + y*1j
-                    transformed = (complex_coord - offset)*cmath.exp(
-                        1j*ROTATION_SPEED)*SHRINK_FACTOR + offset
-
-                    new_coords.append((transformed.real)) 
-                    new_coords.append((transformed.imag))
-
-                self.game_canvas.coords(item, *new_coords)
-
-        if i > REMOVE_TIME:
-            self.draw_game_state()
-            return
-
-        self.game_canvas.after(15, lambda i=i: self.animate_removal(removed, 
-            i + 1))
-
-    def distance(self, coord1, coord2):
-        '''
-        Arguments:
-            coord1, coord2: (x, y) pixel coordinates
-
-        Returns (x, y) distance between coord1 and coord2.
-        '''
-
-        return (coord1[0] - coord2[0]), (coord1[1] - coord2[1])
+        if not event.widget.find_overlapping(event.x, event.y, 
+            event.x, event.y):
+            item = self.square_clicked[1]
+            event.widget.itemconfig(item, outline='')
+            self.square_clicked = None
 
     def loc_to_coord(self, loc):
         '''
@@ -417,23 +291,6 @@ class Application:
         col = (coord[1] - y) // space_size
 
         return int(row), int(col)
-
-    def key_handler(self):
-        pass
-
-    def on_game_click(self, event):
-        '''
-        A callback function called when the mouse is clicked inside the game
-        canvas.
-        '''
-        if not self.square_clicked or self.animating:
-            return
-
-        if not event.widget.find_overlapping(event.x, event.y, 
-            event.x, event.y):
-            item = self.square_clicked[1]
-            event.widget.itemconfig(item, outline='')
-            self.square_clicked = None
 
 
 root = tk.Tk()
