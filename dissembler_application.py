@@ -105,6 +105,8 @@ class Application:
         Draws the current game state to the game canvas.
         '''
 
+        self.game_canvas.delete('all')
+
         space_size, x, y = self.get_drawing_dimensions()
 
         for loc in self.game_state:
@@ -113,7 +115,6 @@ class Application:
             try:
                 color_queue = self.game_state[loc]
             except KeyError:
-                self.game_canvas.delete(tag)
                 continue
             
             colored_squares = []
