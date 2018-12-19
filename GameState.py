@@ -1,5 +1,6 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 
+from utils import is_loc
 import locset as ls
 
 class GameState:
@@ -10,11 +11,15 @@ class GameState:
     def __init__(self):
         '''
         Fields:
-            loc_to_color: a dict mapping locations ((x, y) tuples) to a list
+            loc_to_color: a dict mapping locations ((x, y) tuples) to a deque
             of colors (strings)
             color_to_loc: a dict mapping a color to a set of locations
+            maxrow, maxcol: highest row and column indicies
+            minrow, mincol: lowest row and column indicies
         '''
-        self.loc_to_color = defaultdict(list)
+        self.maxrow, self.maxcol = 0, 0
+        self.minrow, self.mincol = 4e9, 4e9
+        self.loc_to_color = defaultdict(deque)
         self.color_to_loc = defaultdict(set)
 
     def add(self, loc, color):
@@ -27,56 +32,45 @@ class GameState:
         multiple colors associated with it, so a 'loc' is really associated
         with a stack of color, with the topmost element being the current color.
         '''
-        assert _is_loc(loc)
+        assert is_loc(loc)
         assert type(color) is str
 
-        color_stack = self.loc_to_color[loc]
+        color_queue = self.loc_to_color[loc]
 
-        try:
-            old_color = color_stack[-1]
-        except IndexError:
-            pass
-        else:
-            self.color_to_loc[old_color].remove(loc)
+        if not color_queue:
+            self.color_to_loc[color].add(loc)
 
-        color_stack.append(color)
-        self.color_to_loc[color].add(loc)
+        color_queue.append(color)
 
-    def _is_loc(self, loc):
-        '''
-        Arguments:
-          loc -- a location
 
-        Return value: True if `loc` is a valid (row, column) location,
-          otherwise False.
-        '''
-        if type(loc) is not tuple:
-            return False
-        if len(loc) != 2:
-            return False
-        if type(loc[0]) is int and type(loc[1]) is int:
-            if loc[0] >= 0 and loc[1] >= 0:
-                return True
-        return False
+        if loc[0] > self.maxrow:
+            self.maxrow = loc[0]
+        if loc[1] > self.maxcol:
+            self.maxcol = loc[1]
+        if loc[0] < self.minrow:
+            self.minrow = loc[0]
+        if loc[1] < self.mincol:
+            self.mincol = loc[0]
 
     def strip(self, loc):
         '''
         Arguments:
             loc: a (x, y) tuple describing a location
 
-        Removes the topmost color on the stack of colors associated with loc.
+        Removes the topmost color on the queue of colors associated with loc.
         '''
-        color_stack = self.loc_to_color[loc]
+        color_queue = self.loc_to_color[loc]
 
-        if not color_stack:
+        if not color_queue:
             raise ValueError('Loc is empty!')
 
-        color = color_stack.pop()
+        color = color_queue.popleft()
         self.color_to_loc[color].remove(loc)
 
         try:
-            new_color = color_stack[-1]
+            new_color = color_queue[0]
         except IndexError:
+            # loc is now empty, may have to resize playing area
             pass
         else:
             self.color_to_loc[new_color].add(loc)
@@ -93,8 +87,8 @@ class GameState:
         if not self.loc_to_color[loc1] or not self.loc_to_color[loc2]:
             raise ValueError('Loc is empty!')
 
-        color1 = self.loc_to_color[loc1][-1]
-        color2 = self.loc_to_color[loc2][-1]
+        color1 = self.loc_to_color[loc1][0]
+        color2 = self.loc_to_color[loc2][0]
 
         self.color_to_loc[color2].remove(loc2)
         self.color_to_loc[color1].add(loc2)
@@ -110,7 +104,7 @@ class GameState:
         Returns a bool representing if there are any connected color groups.
         '''
         for color, locset in self.color_to_loc.items():
-            smaller, larger = ls.filter_locset(loctset)
+            smaller, larger = ls.filter_locset(locset)
 
             if larger:
                 return True
@@ -143,6 +137,17 @@ class GameState:
         if not ls.is_adjacent(loc1, loc2):
             return False
 
+        return self._removes_any(loc1, loc2)
+
+    def _removes_any(self, loc1, loc2):
+        '''
+        Arguments:
+            loc1, loc2: two locations
+
+        Returns whether swapping loc1 or loc2 would result in any squares
+        being removed. Assumes loc1 and loc2 are adjacent.
+        '''
+
         self.swap(loc1, loc2)
 
         valid = self.any_to_remove()
@@ -151,24 +156,34 @@ class GameState:
 
         return valid
 
+
     def make_move(self, loc1, loc2):
         '''
         Arguments:
             loc1, loc2: two locations
 
         Executes swapping loc1 and loc2 and resolves events that occur after.
-        Returns whether the move was successful.
         '''
-        assert _is_loc(loc1)
-        assert _is_loc(loc2)
+        assert is_loc(loc1)
+        assert is_loc(loc2)
 
-        if not is_move_valid(loc1, loc2):
-            return False
+        if not self.is_move_valid(loc1, loc2):
+            raise ValueError('Invalid move!')
 
         self.swap(loc1, loc2)
         self.remove_connected_groups()
 
-        return True
+    def nrows(self):
+        '''
+        Returns total number of rows containing non-empty locations.
+        '''
+        return self.maxrow - self.minrow + 1
+
+    def ncols(self):
+        '''
+        Returns total number of cols containing non-empty locations.
+        '''
+        return self.maxcol - self.mincol + 1
 
     def __getitem__(self, key):
         if self.loc_to_color[key]:
@@ -177,3 +192,31 @@ class GameState:
             return self.color_to_loc[key]
         else:
             raise KeyError(f'{key} not found')
+
+    def __iter__(self):
+        return iter(self.loc_to_color)
+
+    def __bool__(self):
+        return bool(self.loc_to_color)
+
+class A:
+    def __init__(self):
+        self.game_state = GameState()
+
+        self.game_state.add((0, 0), 'red')
+        self.game_state.add((1, 1), 'red')
+        self.game_state.add((1, 0), 'blue')
+        self.game_state.add((4, 4), 'green')
+        self.game_state.add((2, 3), 'blue')
+        self.game_state.add((1, 1), 'blue')
+        self.game_state.add((1, 1), 'green')
+        self.game_state.add((2, 0), 'red')
+
+if __name__ == '__main__':
+    a = A()
+    gs = a.game_state
+
+    print(gs.loc_to_color)
+    print(gs.color_to_loc)
+
+    print(gs.is_move_valid((0, 0), (1, 0)))
