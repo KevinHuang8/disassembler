@@ -1,5 +1,7 @@
-import math, cmath
+import math, cmath, random
 import tkinter as tk
+from tkinter.filedialog import askopenfilename
+from copy import deepcopy
 
 import GameState as gs
 import locset as ls
@@ -25,12 +27,15 @@ class Application:
 
         self.create_widgets()
         self.animator = Animator(self)
+        self.master.bind('<Key>', self.key_handler)
 
         # Whether a game square has been clicked
         self.square_clicked = None
 
         # A GameState object
         self.game_state = gs.GameState()
+        # A stack of game states, for the purpose of undoing moves
+        self.state_stack = []
 
         self.game_state.add((0, 2), 'red')
         self.game_state.add((1, 2), 'red')
@@ -47,6 +52,8 @@ class Application:
         self.game_state.add((3, 3), 'blue')
         self.game_state.add((3, 4), 'blue')
         self.game_state.add((2, 2), 'green')
+
+        self.state_stack.append(deepcopy(self.game_state))
 
         self.draw_game_state()
 
@@ -77,22 +84,70 @@ class Application:
         self.info_frame = tk.Frame(self.master, width = self.width,
             height = text_size)
 
-        self.display = tk.Label(self.info_frame, text='asdf', anchor='w',
-            font=FONT)
+        self.display_text = tk.StringVar()
+        self.display = tk.Message(self.info_frame,
+            textvariable=self.display_text, anchor='w',
+            font=FONT, width=self.width, justify='left')
 
-        self.menu_canvas.pack(fill='both')
+        self.menu_canvas.pack(expand='yes', fill='both')
         self.game_canvas.pack(expand='yes', fill='both')
         self.info_frame.pack(expand='yes', fill='both')
 
-        self.display.pack(fill='both')
+        self.display.pack(expand='yes', fill='both')
 
         self.game_canvas.bind('<Button-1>', self.on_game_click)
+
+    def load(self, filename):
+        '''
+        Loads a dissembler file from 'filename'.
+        ''' 
+        color_dict = {}
+
+        with open(filename, 'r') as file:
+            line = file.readline()
+
+            for r, row in enumerate(line.split(' ')):
+                for col, square in enumerate(row):
+                    interlocked = square.split('|')
+
+                    for i in interlocked:
+                        if i == '.':
+                            break
+                        if i not in color_dict:
+                            color_dict[i] = self.random_color()
+                        self.game_state.add((row, col), color_dict[i])
+
+    def prompt_load(self):
+        '''
+        Prompts the user to load a file.
+        '''
+        self.game_state = gs.GameState()
+        self.state_stack = []
+
+        filename = askopenfilename()
+        self.load(filename)
+
+        self.state_stack.append(deepcopy(self.game_state))
+
+        self.draw_game_state()
+                       
+    def random_color(self):
+        """
+        Returns a random string in the form of #RRGGBB, representing a color code
+        in hex form.
+        """
+        color = '#'
+        for i in range(6):
+            hex_code = random.randint(0, 15)
+            # must do [2:] b/c hex starts w/ '0x'
+            color += hex(hex_code)[2:]
+
+        return color
 
     def draw_game_state(self):
         '''
         Draws the current game state to the game canvas.
         '''
-
         self.game_canvas.delete('all')
 
         space_size, x, y = self.get_drawing_dimensions()
@@ -130,7 +185,7 @@ class Application:
 
     def get_drawing_dimensions(self):
         '''
-        Computes the square grid where the squares in the dissembler
+        Computes the rectangular grid where the squares in the dissembler
         game should be drawn relative to the canvas.
 
         Returns (square_size, startx, starty), where
@@ -146,18 +201,22 @@ class Application:
         width = int(self.game_canvas['width'])
         height = int(self.game_canvas['height'])
 
-        offset = int(abs(width - height) / 2)
+        canvas_ratio = width / height
 
-        if width > height:
-            x = offset
-            y = 0
-        else:
+        game_ratio = nrows / ncols
+
+        if game_ratio > canvas_ratio:
+            # Widths are matching
+            r = (width * ncols) / (height * nrows)
             x = 0
-            y = offset
-
-        total_length = min(width, height)
-
-        space_size = total_length // n
+            y = int(height * (1 - r)) // 2
+            space_size = width / nrows
+        elif game_ratio <= canvas_ratio:
+            # Heights are matching
+            r = (height * nrows) / (width * ncols)
+            x = int(width * (1 - r)) // 2
+            y = 0
+            space_size = height / ncols
 
         return space_size, x, y
 
@@ -183,6 +242,40 @@ class Application:
             (x + space_size - spacing, y + space_size - spacing), 
             (x + space_size - spacing, y + spacing)], 
             fill=color, outline='', width=4, tags=tag)
+
+    def loc_to_coord(self, loc):
+        '''
+        Arguments:
+            loc - a (row, column) location
+
+        Returns the pixel coordinates of the square space corresponding to loc
+        relative to the game canvas.
+        '''
+
+        space_size, x, y = self.get_drawing_dimensions()
+
+        locx = loc[0] - self.game_state.minrow
+        locy = loc[1] - self.game_state.mincol
+
+        return x + space_size * locx, y + space_size * locy
+
+    def coord_to_loc(self, coord):
+        '''
+        Arguments:
+            coord: a (x, y) pixel coordinate relative to the game canvas
+
+        Returns the corresponding (row, col) location that
+        contains the coord.
+        '''
+        space_size, x, y = self.get_drawing_dimensions()
+
+        row = (coord[0] - x) // space_size
+        col = (coord[1] - y) // space_size
+
+        row -= self.game_state.minrow
+        col -= self.game_state.mincol
+
+        return int(row), int(col)
 
     def on_square_hover(self, event, tag):
         '''
@@ -228,6 +321,8 @@ class Application:
             self.square_clicked = tag, item
             return
 
+        # Clicked on second square
+
         loc1 = self.coord_to_loc(self.game_canvas.coords(
             self.square_clicked[1])[:2])
         loc2 = self.coord_to_loc((event.x, event.y))
@@ -235,18 +330,11 @@ class Application:
         try:
             removed = self.game_state.make_move(loc1, loc2)
         except ValueError:
-            # Send a message that the move is invalid!
-            if not ls.is_adjacent(loc1, loc2):
-                print('Not adjacent!')
-            else:
-                print("Doesn't remove anything!")
+            self.send_message(self.get_swap_error_msg(loc1, loc2), 'red')
         else:
-            direction = ls.orientation(loc1, loc2)
-            self.animator.animate_swap(self.square_clicked[0], tag, loc2, 
-                direction, removed)
-
-    def key_handler(self):
-        pass
+            self.on_swap(self.square_clicked[0], tag, loc1, loc2, removed)
+            game_state_copy = deepcopy(self.game_state)
+            self.state_stack.append(game_state_copy)
 
     def on_game_click(self, event):
         '''
@@ -262,39 +350,69 @@ class Application:
             event.widget.itemconfig(item, outline='')
             self.square_clicked = None
 
-    def loc_to_coord(self, loc):
+    def key_handler(self, event):
+        if event.keysym == 'u':
+            try:
+                self.undo_move()
+            except IndexError:
+                # No moves to undo
+                pass
+
+        elif event.keysym == 'l':
+            self.prompt_load()
+
+    def undo_move(self):
+        '''
+        Reverts the game state to the previous state on the game_stack.
+        '''
+        self.animator.cancel_animation()
+        self.animator.cancel_text_animation(self.display_text)
+
+        self.game_state = deepcopy(self.state_stack[-2])
+        self.state_stack.pop()
+        self.draw_game_state()
+
+    def send_message(self, msg, color='black'):
         '''
         Arguments:
-            loc - a (row, column) location
+            msg: a string
 
-        Returns the pixel coordinates of the square space corresponding to loc
-        relative to the game canvas.
+        Displays an message on the GUI
         '''
+        self.display_text.set('')
+        self.display['foreground'] = color
+        self.animator.animate_text(msg, self.display_text)
 
-        space_size, x, y = self.get_drawing_dimensions()
-
-        locx = loc[0] - self.game_state.minrow
-        locy = loc[1] - self.game_state.mincol
-
-        return x + space_size * locx, y + space_size * locy
-
-    def coord_to_loc(self, coord):
+    def get_swap_error_msg(self, loc1, loc2):
         '''
         Arguments:
-            coord: a (x, y) pixel coordinate relative to the game canvas
+            loc1, loc2: two location tuples
 
-        Returns the corresponding (row, col) location that
-        contains the coord.
+        Called when a move swap is invalid. Returns the error message 
+        corresponding to the invalid move of loc1 and loc2.
         '''
-        space_size, x, y = self.get_drawing_dimensions()
 
-        row = (coord[0] - x) // space_size
-        col = (coord[1] - y) // space_size
+        if not ls.is_adjacent(loc1, loc2):
+            return 'Your move needs to swap two adjacent squares!'
+        else:
+            return 'Your move needs to connect at least 3 squares of the same'+\
+            'color!'
 
-        row -= self.game_state.minrow
-        col -= self.game_state.mincol
+    def on_swap(self, tag1, tag2, loc1, loc2, removed):
+        '''
+        Arguments:
+            tag1, tag2: two strings referring to the squares that were just
+            swapped
+            loc1, loc2: location tuples corresponding to the squares
+            removed: a locset of removed locations
 
-        return int(row), int(col)
+        Called when a valid swap occurs. Resolves the swap.
+        '''
+        self.display_text.set('')
+
+        direction = ls.orientation(loc1, loc2)
+        self.animator.animate_swap(tag1, tag2, loc2, 
+            direction, removed)
 
     def after_swap(self, tag1, tag2, removed):
         '''

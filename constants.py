@@ -31,3 +31,6 @@ VICTORY_IMAGE = 'trophy.gif'
 
 # How fast the vicotry image appears
 IMAGE_GROWTH_FACTOR = 5, 4
+
+# How fast to animate text
+TEXT_SPEED = 20

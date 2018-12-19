@@ -10,7 +10,11 @@ class Animator:
         self.main = main
         self.game_canvas = main.game_canvas
 
+        # If the game canvas is being animated
         self.animating = False
+
+        # If text is being animated
+        self.text_animating = False
 
     def animate_swap(self, tag1, tag2, loc2, direction, removed):
         '''
@@ -57,9 +61,9 @@ class Animator:
             
             return
 
-        self.game_canvas.after(15, lambda tag1=tag1, tag2=tag2, loc2=loc2,
-            direction=direction, removed=removed: self.animate_swap(tag1, tag2, 
-                loc2, direction, removed))
+        self.game_task = self.game_canvas.after(15, lambda tag1=tag1, tag2=tag2, 
+            loc2=loc2, direction=direction, removed=removed: 
+            self.animate_swap(tag1, tag2, loc2, direction, removed))
 
     def animate_removal(self, removed, i):
         '''
@@ -108,8 +112,8 @@ class Animator:
             self.main.check_victory()
             return
 
-        self.game_canvas.after(15, lambda i=i: self.animate_removal(removed, 
-            i + 1))
+        self.game_task = self.game_canvas.after(15, lambda i=i: 
+            self.animate_removal(removed, i + 1))
 
     def animate_victory(self, length, image):
         '''
@@ -132,7 +136,63 @@ class Animator:
         self.game_canvas.image = image
         self.game_canvas.itemconfig('photo', image=image)
         
-        self.game_canvas.after(15, lambda: self.animate_victory(length, image))
+        self.game_canvas.after(15, 
+            lambda: self.animate_victory(length, image))
+
+    def animate_text(self, text, text_variable):
+        '''
+        Arguments:
+            text: the text to animate
+            text_variable: a tkinter StringVar to update 
+
+        Animate the appearance to text.
+        '''
+        self.cancel_text_animation(text_variable)
+
+        self.text_animating = True
+        self._animate_text(text, text_variable)
+
+    def _animate_text(self, text, text_variable):
+        '''
+        The helper function to animate_text() that carries out the recursive
+        calls.
+        '''
+        try:
+            letter = text[0]
+        except IndexError:
+            # No more text to animate
+            self.text_animating = False
+            return
+
+        text = text[1:]
+
+        curr_text = text_variable.get()
+
+        curr_text += letter
+
+        text_variable.set(curr_text)
+
+        self.text_task = self.main.display.after(TEXT_SPEED, 
+            lambda: self._animate_text(text, text_variable))
+
+    def cancel_animation(self):
+        '''
+        Stop any animations on the game canvas, if there are any.
+        Doesn't stop the victory animation.
+        '''
+        if self.animating:
+            self.animating = False
+            self.game_canvas.after_cancel(self.game_task)
+
+            self.main.square_clicked = None
+
+    def cancel_text_animation(self, text_variable):
+        '''
+        Stops any text animations, if any. Resets the text_variable display.
+        '''
+        if self.text_animating:
+            self.main.display.after_cancel(self.text_task)
+            text_variable.set('')
 
     def distance(self, coord1, coord2):
         '''
