@@ -28,8 +28,6 @@ class Application:
 
         # Whether a game square has been clicked
         self.square_clicked = None
-        # Whether a game animation is currently going on
-        self.animating = False
 
         # A GameState object
         self.game_state = gs.GameState()
@@ -83,8 +81,8 @@ class Application:
             font=FONT)
 
         self.menu_canvas.pack(fill='both')
-        self.game_canvas.pack(fill='both')
-        self.info_frame.pack(fill='both')
+        self.game_canvas.pack(expand='yes', fill='both')
+        self.info_frame.pack(expand='yes', fill='both')
 
         self.display.pack(fill='both')
 
@@ -275,7 +273,10 @@ class Application:
 
         space_size, x, y = self.get_drawing_dimensions()
 
-        return x + space_size * loc[0], y + space_size * loc[1]
+        locx = loc[0] - self.game_state.minrow
+        locy = loc[1] - self.game_state.mincol
+
+        return x + space_size * locx, y + space_size * locy
 
     def coord_to_loc(self, coord):
         '''
@@ -290,7 +291,57 @@ class Application:
         row = (coord[0] - x) // space_size
         col = (coord[1] - y) // space_size
 
+        row -= self.game_state.minrow
+        col -= self.game_state.mincol
+
         return int(row), int(col)
+
+    def after_swap(self, tag1, tag2, removed):
+        '''
+        Arguments:
+            tag1, tag2: two canvas tags corresponding to squares that were
+            just succesfully swapped.
+            removed: a set of locations that had their colors stripped
+
+        Called after the swaping animation is done. Resolves any actions
+        that are needed after a swap.
+        '''
+        # Unclick
+        self.game_canvas.itemconfig(tag1, outline='')
+        self.game_canvas.itemconfig(tag2, outline='')
+        self.square_clicked = None
+
+        self.animator.animate_removal(removed, 0)
+
+    def check_victory(self):
+        '''
+        If the game has been won, activate the victory splash screen.
+        '''
+
+        if not self.game_state:
+            self.game_canvas.delete('all')
+
+            x = int(self.game_canvas['width']) / 2
+            y = int(self.game_canvas['height']) / 2
+
+            victory_image = tk.PhotoImage(file=VICTORY_IMAGE)
+
+            width = victory_image.width()
+            height = victory_image.height()
+
+            largest_dim = max(width, height)
+            smallest_window = min(x*2, y*2)
+
+            scaling_factor = int(largest_dim / smallest_window) + 1
+            victory_image = victory_image.subsample(50)
+
+            self.game_canvas.image = victory_image
+            self.game_canvas.create_image(x, y, image=victory_image, 
+                tag='photo')
+            self.animator.animate_victory(smallest_window, victory_image)
+
+            self.game_canvas.create_text(x, y, text='You Win!', 
+                font=('Courier', 44))
 
 
 root = tk.Tk()

@@ -24,3 +24,10 @@ SWAP_SPEED = 5
 ROTATION_SPEED = math.pi / 12
 SHRINK_FACTOR = 0.97
 REMOVE_TIME = 75
+
+# Image file (has to be .gif) displayed in victory splash screen
+
+VICTORY_IMAGE = 'trophy.gif'
+
+# How fast the vicotry image appears
+IMAGE_GROWTH_FACTOR = 5, 4

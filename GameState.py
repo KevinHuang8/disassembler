@@ -204,7 +204,10 @@ class GameState:
         return iter(self.loc_to_color)
 
     def __bool__(self):
-        return bool(self.loc_to_color)
+        for color_queue in self.loc_to_color.values():
+            if color_queue:
+                return True
+        return False
 
     def __str__(self):
         return str(self.loc_to_color)

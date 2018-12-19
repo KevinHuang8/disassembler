@@ -53,7 +53,7 @@ class Animator:
             self.game_canvas.move(tag1, distx, disty)
             self.game_canvas.move(tag2, -distx, -disty)
             
-            self.after_swap(tag1, tag2, removed)
+            self.main.after_swap(tag1, tag2, removed)
             
             return
 
@@ -61,29 +61,14 @@ class Animator:
             direction=direction, removed=removed: self.animate_swap(tag1, tag2, 
                 loc2, direction, removed))
 
-    def after_swap(self, tag1, tag2, removed):
-        '''
-        Arguments:
-            tag1, tag2: two canvas tags corresponding to squares that were
-            just succesfully swapped.
-            removed: a set of locations that had their colors stripped
-
-        Called after the swaping animation is done. Resolves any actions
-        that are needed after a swap.
-        '''
-        # Unclick
-        self.game_canvas.itemconfig(tag1, outline='')
-        self.game_canvas.itemconfig(tag2, outline='')
-        self.main.square_clicked = None
-
-        self.animate_removal(removed, 0)
-
     def animate_removal(self, removed, i):
         '''
         Arguments:
             removed: a set of locations that had their colors stripped
             i: number of iterations
         '''
+        self.animating = True
+
         space_size, _x, _y = self.main.get_drawing_dimensions()
 
         for loc in removed:
@@ -93,6 +78,7 @@ class Animator:
                 xspace + space_size, yspace + space_size)
 
             for item in items:
+                # Don't animate inside color squares
                 if len(self.game_canvas.gettags(item)) == 1:
                     continue
 
@@ -117,11 +103,36 @@ class Animator:
                 self.game_canvas.coords(item, *new_coords)
 
         if i > REMOVE_TIME:
+            self.animating = False
             self.main.draw_game_state()
+            self.main.check_victory()
             return
 
         self.game_canvas.after(15, lambda i=i: self.animate_removal(removed, 
             i + 1))
+
+    def animate_victory(self, length, image):
+        '''
+        Arguments:
+            length: the pixel length at which the photo should stop growing
+            image: the PhotoImage object to animate
+
+        Animate the victory trophy appearing.
+        '''
+        self.animating = True
+
+        if max(image.width(), image.height()) * IMAGE_GROWTH_FACTOR[0] / \
+        IMAGE_GROWTH_FACTOR[1] > length:
+            self.animating = False
+            return
+
+        image = image.zoom(IMAGE_GROWTH_FACTOR[0])
+        image = image.subsample(IMAGE_GROWTH_FACTOR[1])
+
+        self.game_canvas.image = image
+        self.game_canvas.itemconfig('photo', image=image)
+        
+        self.game_canvas.after(15, lambda: self.animate_victory(length, image))
 
     def distance(self, coord1, coord2):
         '''
