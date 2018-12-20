@@ -1,5 +1,9 @@
 import math
 
+# Size of game window
+WINDOW_HEIGHT = 600
+WINDOW_WIDTH = 800
+
 # The proportion of the non-menu part of the application GUI that the game
 # takes up
 GAME_WINDOW_PROPORTION = 0.8
@@ -9,11 +13,8 @@ MENU_PROPORTION = 0.1
 
 FONT = ('Courier', 12)
 
-# The spacing between squares in the GUI
-SPACING = 5
-
-# Spacing between colors when a square has multiple colors
-INNER_SPACING = 10
+# The spacing between squares in the GUI. Larger = smaller spacing
+SPACING = 13
 
 # Max colors to show in a sqare
 MAX_COLORS = 4
@@ -34,3 +35,6 @@ IMAGE_GROWTH_FACTOR = 5, 4
 
 # How fast to animate text
 TEXT_SPEED = 20
+
+# Max number of rows and columns allowed
+MAX_SIZE = 20

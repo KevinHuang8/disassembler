@@ -12,7 +12,7 @@ class Application:
     '''
     Represents the main application window of a dissembler game.
     '''
-    def __init__(self, master, init_size=(800,600)):
+    def __init__(self, master, init_size=(WINDOW_WIDTH, WINDOW_HEIGHT)):
         '''
         Arguments:
             master: a tk.Tk object that manages the window
@@ -37,25 +37,8 @@ class Application:
         # A stack of game states, for the purpose of undoing moves
         self.state_stack = []
 
-        self.game_state.add((0, 2), 'red')
-        self.game_state.add((1, 2), 'red')
-        self.game_state.add((2, 2), 'blue')
-        self.game_state.add((3, 2), 'red')
-        self.game_state.add((4, 2), 'yellow')
-        self.game_state.add((5, 2), 'yellow')
-        self.game_state.add((6, 2), 'green')
-        self.game_state.add((7, 2), 'yellow')
-        self.game_state.add((8, 2), 'green')
-        self.game_state.add((9, 2), 'green')
-        self.game_state.add((3, 1), 'green')
-        self.game_state.add((3, 0), 'green')
-        self.game_state.add((3, 3), 'blue')
-        self.game_state.add((3, 4), 'blue')
-        self.game_state.add((2, 2), 'green')
-
-        self.state_stack.append(deepcopy(self.game_state))
-
-        self.draw_game_state()
+        self.send_message('Hello! To start playing, please load a file or a '+
+            'pre-built puzzle. For more info, such as keybinds, see readme.txt')
 
     def mainloop(self):
         self.master.mainloop()
@@ -97,44 +80,91 @@ class Application:
 
         self.game_canvas.bind('<Button-1>', self.on_game_click)
 
-    def load(self, filename):
+    def load(self, filename, game_state):
         '''
-        Loads a dissembler file from 'filename'.
+        Loads a dissembler file from 'filename' into 'game_state'.
+
+        Returns the updated game state.
         ''' 
         color_dict = {}
 
         with open(filename, 'r') as file:
             line = file.readline()
 
-            for r, row in enumerate(line.split(' ')):
-                for col, square in enumerate(row):
-                    interlocked = square.split('|')
+            if file.readline():
+                raise IOError('The contents of the file need to be on one ' +
+                    'line. See readme.txt for more info on proper input.')
 
-                    for i in interlocked:
+            for r, row in enumerate(line.split(' ')):
+                if r > MAX_SIZE:
+                    raise IOError('The size of the puzzle is limited to '+
+                        f'{MAX_SIZE}.')
+
+                squares = []
+                it = iter(row)
+
+                for elem in it:
+                    if elem == '|':
+                        square = ''
+                        elem = next(it)
+                        try:
+                            while elem != '|':
+                                if elem == '.':
+                                    raise IOError('"." cannot be used inside' +
+                                        ' a pair of "|". See readme.txt ' + 
+                                        'for more info on proper input.')
+                                square += elem
+                                elem = next(it)
+                        except StopIteration as e:
+                            raise IOError('"|" symbols must be in pairs. ' + 
+                                'See readme.txt for more info on ' +
+                                'proper input.') from e
+
+                        squares.append(square)
+                    else:
+                        squares.append(elem)
+
+                for c, square in enumerate(squares):
+                    if c > MAX_SIZE:
+                        raise IOError('The size of the puzzle is limited to ' +
+                            f'{MAX_SIZE}.')
+                    for i in square:
                         if i == '.':
                             break
                         if i not in color_dict:
                             color_dict[i] = self.random_color()
-                        self.game_state.add((row, col), color_dict[i])
+                        game_state.add((r, c), color_dict[i])
+
+        return game_state
 
     def prompt_load(self):
         '''
         Prompts the user to load a file.
         '''
-        self.game_state = gs.GameState()
-        self.state_stack = []
-
         filename = askopenfilename()
-        self.load(filename)
+        new_game_state = gs.GameState()
+
+        try:
+            self.load(filename, new_game_state)
+        except IOError as e:
+            self.send_message('Your file is not a valid input: ' + str(e), 
+                'red')
+            return
+
+        self.game_state = new_game_state
+        self.state_stack = []
 
         self.state_stack.append(deepcopy(self.game_state))
 
+        self.display_text.set('')
+        self.animator.cancel_text_animation(self.display_text)
+        self.animator.cancel_animation()
         self.draw_game_state()
                        
     def random_color(self):
         """
-        Returns a random string in the form of #RRGGBB, representing a color code
-        in hex form.
+        Returns a random string in the form of #RRGGBB, representing a color 
+        code in hex form.
         """
         color = '#'
         for i in range(6):
@@ -152,6 +182,8 @@ class Application:
 
         space_size, x, y = self.get_drawing_dimensions()
 
+        self.spacing = space_size / SPACING
+
         for loc in self.game_state:
             tag = f'{loc[0]}+{loc[1]}'
 
@@ -162,7 +194,7 @@ class Application:
             
             colored_squares = []
             for i, color in enumerate(color_queue):
-                if i > 4:
+                if i > 3:
                     # Colors beyond the 4th appear as black
                     color = 'black'
 
@@ -173,7 +205,7 @@ class Application:
                 self.draw_square_in_grid(self.game_canvas, space_size, 
                     *self.loc_to_coord(loc), 
                     color, modified_tag,
-                    SPACING + i*INNER_SPACING)
+                    self.spacing + i*(0.25*(space_size/2 - self.spacing - 3)))
 
             self.game_canvas.tag_bind(tag, '<Enter>', 
                 lambda event, tag=tag: self.on_square_hover(event, tag))
@@ -221,7 +253,7 @@ class Application:
         return space_size, x, y
 
     def draw_square_in_grid(self, canvas, space_size, x, y, color, tag,
-        spacing=SPACING):
+        spacing):
         '''
         Arguments:
             canvas: a tkinter canvas
@@ -361,6 +393,9 @@ class Application:
         elif event.keysym == 'l':
             self.prompt_load()
 
+        elif event.keysym == 'r':
+            self.restart()
+
     def undo_move(self):
         '''
         Reverts the game state to the previous state on the game_stack.
@@ -370,6 +405,18 @@ class Application:
 
         self.game_state = deepcopy(self.state_stack[-2])
         self.state_stack.pop()
+        self.draw_game_state()
+
+    def restart(self):
+        '''
+        Restarts the puzzle
+        '''
+
+        self.animator.cancel_animation()
+        self.animator.cancel_text_animation(self.display_text)
+
+        self.game_state = self.state_stack[0]
+        self.state_stack = [deepcopy(self.game_state)]
         self.draw_game_state()
 
     def send_message(self, msg, color='black'):

@@ -43,7 +43,8 @@ class Animator:
             self.game_canvas.move(tag1, 0, -SWAP_SPEED)
         
         space_coord = self.main.loc_to_coord(loc2)
-        square_coord = (space_coord[0] + SPACING, space_coord[1] + SPACING)
+        square_coord = (space_coord[0] + self.main.spacing, 
+            space_coord[1] + self.main.spacing)
 
         item = self.game_canvas.find_withtag(tag1)
         if type(item) is tuple:
