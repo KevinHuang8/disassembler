@@ -172,7 +172,7 @@ class Application:
                             break
                         if i not in color_dict:
                             color_dict[i] = self.random_color()
-                        game_state.add((r, c), color_dict[i])
+                        game_state.add((c, r), color_dict[i])
 
         return game_state
 
