@@ -26,6 +26,7 @@ class Application:
         self.master.geometry(f'{self.width}x{self.height}')
 
         self.create_widgets()
+        self.create_menu_buttons()
         self.animator = Animator(self)
         self.master.bind('<Key>', self.key_handler)
 
@@ -36,9 +37,12 @@ class Application:
         self.game_state = gs.GameState()
         # A stack of game states, for the purpose of undoing moves
         self.state_stack = []
+        # Number of moves made, undos do not reset
+        self.moves = 0
 
-        self.send_message('Hello! To start playing, please load a file or a '+
-            'pre-built puzzle. For more info, such as keybinds, see readme.txt')
+        self.send_message('Hello! To start playing, please load a puzzle file.'+
+            ' Many pre-built examples are included.' +
+            ' For more info, such as keybinds, see readme.txt.')
 
     def mainloop(self):
         self.master.mainloop()
@@ -79,6 +83,41 @@ class Application:
         self.display.pack(expand='yes', fill='both')
 
         self.game_canvas.bind('<Button-1>', self.on_game_click)
+
+    def create_menu_buttons(self):
+        '''
+        Creates the buttons bound to the menu canvas.
+        '''
+
+        width = int(self.menu_canvas['width'])
+        height = int(self.menu_canvas['height'])
+
+        button_diameterx = int((width - 4 * (width / SPACING)) / 6)
+        button_diametery = int((height - 2 * (height / SPACING)) / 2)
+
+        button_width = int(button_diameterx*113/400)
+        button_height = int(button_diametery*10/100)
+
+        load_button = tk.Button(self.master, text='Load', 
+            command=self.prompt_load, width=button_width, height=button_height)
+
+        self.menu_canvas.create_window(width / SPACING + button_diameterx,
+            height / SPACING + button_diametery, window=load_button,
+            tag='load')
+
+        undo_button = tk.Button(self.master, text='Undo', 
+            command=self.undo_move, width=button_width, height=button_height)
+
+        self.menu_canvas.create_window(2*(width / SPACING) + 3*button_diameterx,
+            height / SPACING + button_diametery, window=undo_button,
+            tag='undo')
+
+        restart_button = tk.Button(self.master, text='Restart', 
+            command=self.restart, width=button_width, height=button_height)
+
+        self.menu_canvas.create_window(3*(width / SPACING) + 5*button_diameterx,
+            height / SPACING + button_diametery, window=restart_button,
+            tag='restart')
 
     def load(self, filename, game_state):
         '''
@@ -214,6 +253,10 @@ class Application:
 
             self.game_canvas.tag_bind(tag, '<Button-1>', 
                 lambda event, tag=tag: self.on_square_click(event, tag))
+
+        # Move counter
+        self.game_canvas.create_text(self.width - FONT[1]*4, 
+            FONT[1], font=FONT, text=f'Moves: {self.moves}')
 
     def get_drawing_dimensions(self):
         '''
@@ -384,11 +427,7 @@ class Application:
 
     def key_handler(self, event):
         if event.keysym == 'u':
-            try:
-                self.undo_move()
-            except IndexError:
-                # No moves to undo
-                pass
+            self.undo_move()
 
         elif event.keysym == 'l':
             self.prompt_load()
@@ -403,14 +442,20 @@ class Application:
         self.animator.cancel_animation()
         self.animator.cancel_text_animation(self.display_text)
 
-        self.game_state = deepcopy(self.state_stack[-2])
-        self.state_stack.pop()
+        try:
+            self.game_state = deepcopy(self.state_stack[-2])
+            self.state_stack.pop()
+        except IndexError:
+            # Nothing to undo
+            return
+
         self.draw_game_state()
 
     def restart(self):
         '''
         Restarts the puzzle
         '''
+        self.moves = 0
 
         self.animator.cancel_animation()
         self.animator.cancel_text_animation(self.display_text)
@@ -455,6 +500,8 @@ class Application:
 
         Called when a valid swap occurs. Resolves the swap.
         '''
+        self.moves += 1
+
         self.display_text.set('')
 
         direction = ls.orientation(loc1, loc2)

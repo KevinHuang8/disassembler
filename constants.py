@@ -33,8 +33,8 @@ VICTORY_IMAGE = 'trophy.gif'
 # How fast the vicotry image appears
 IMAGE_GROWTH_FACTOR = 5, 4
 
-# How fast to animate text
-TEXT_SPEED = 20
+# How fast to animate text. Lower = faster
+TEXT_SPEED = 15
 
 # Max number of rows and columns allowed
 MAX_SIZE = 20
