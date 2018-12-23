@@ -50,7 +50,7 @@ class GameState:
         if loc[0] < self.minrow:
             self.minrow = loc[0]
         if loc[1] < self.mincol:
-            self.mincol = loc[0]
+            self.mincol = loc[1]
 
     def strip(self, loc):
         '''
@@ -211,25 +211,3 @@ class GameState:
 
     def __str__(self):
         return str(self.loc_to_color)
-
-class A:
-    def __init__(self):
-        self.game_state = GameState()
-
-        self.game_state.add((0, 0), 'red')
-        self.game_state.add((1, 1), 'red')
-        self.game_state.add((1, 0), 'blue')
-        self.game_state.add((4, 4), 'green')
-        self.game_state.add((2, 3), 'blue')
-        self.game_state.add((1, 1), 'blue')
-        self.game_state.add((1, 1), 'green')
-        self.game_state.add((2, 0), 'red')
-
-if __name__ == '__main__':
-    a = A()
-    gs = a.game_state
-
-    print(gs.loc_to_color)
-    print(gs.color_to_loc)
-
-    print(gs.is_move_valid((0, 0), (1, 0)))

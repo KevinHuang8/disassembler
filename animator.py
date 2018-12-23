@@ -91,8 +91,11 @@ class Animator:
                 new_coords = []
 
                 # coordinate of center of rectangle
-                offset = ((coords[0] + coords[4]) / 2) + \
-                ((coords[1] + coords[3]) / 2)*1j
+                try:
+                    offset = ((coords[0] + coords[4]) / 2) + \
+                    ((coords[1] + coords[3]) / 2)*1j
+                except IndexError:
+                    offset = coords[0]+coords[1]*1j
 
                 # Multiply coordinates by a complex number to rotate
                 it = iter(coords)
@@ -204,3 +207,4 @@ class Animator:
         '''
 
         return (coord1[0] - coord2[0]), (coord1[1] - coord2[1])
+

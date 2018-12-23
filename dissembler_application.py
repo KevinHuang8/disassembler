@@ -181,6 +181,8 @@ class Application:
         Prompts the user to load a file.
         '''
         filename = askopenfilename()
+        if not filename:
+            return
         new_game_state = gs.GameState()
 
         try:
@@ -192,6 +194,7 @@ class Application:
 
         self.game_state = new_game_state
         self.state_stack = []
+        self.moves = 0
 
         self.state_stack.append(deepcopy(self.game_state))
 
@@ -435,6 +438,9 @@ class Application:
         elif event.keysym == 'r':
             self.restart()
 
+        elif event.keysym == 'q':
+            self.master.destroy()
+
     def undo_move(self):
         '''
         Reverts the game state to the previous state on the game_stack.
@@ -488,7 +494,7 @@ class Application:
             return 'Your move needs to swap two adjacent squares!'
         else:
             return 'Your move needs to connect at least 3 squares of the same'+\
-            'color!'
+            ' color!'
 
     def on_swap(self, tag1, tag2, loc1, loc2, removed):
         '''
